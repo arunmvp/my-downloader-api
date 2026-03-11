@@ -1,47 +1,71 @@
-import { Worker } from "bullmq"
-import { redis } from "../queue/redis.js"
-import { getYoutubeInfo } from "../services/youtubeService.js"
-import { downloadVideo } from "../services/downloadService.js"
+import { Worker } from "bullmq";
+import { redis } from "../queue/redis.js";
+import ytdlp from "yt-dlp-exec";
+import path from "path";
+import fs from "fs";
+import crypto from "crypto";
 
-const worker = new Worker(
- "download-queue",
- async job => {
+const VIDEO_DIR = "storage/videos";
+const AUDIO_DIR = "storage/audio";
 
-  try{
+if (!fs.existsSync(VIDEO_DIR)) {
+  fs.mkdirSync(VIDEO_DIR, { recursive: true });
+}
 
-   const { url, platform, format } = job.data
+if (!fs.existsSync(AUDIO_DIR)) {
+  fs.mkdirSync(AUDIO_DIR, { recursive: true });
+}
 
-   if (job.name === "get-info") {
+new Worker(
+  "download-queue",
+  async (job) => {
+    const { url, format } = job.data;
 
-    const data = await getYoutubeInfo(url)
-    return data
+    try {
+      // =====================
+      // MP3 DOWNLOAD
+      // =====================
 
-   }
+      if (format === "mp3") {
+        const name = `audio_${crypto.randomUUID()}.mp3`;
+        const output = path.join(AUDIO_DIR, name);
 
-   if (job.name === "download-video") {
+        await ytdlp(url, {
+          extractAudio: true,
+          audioFormat: "mp3",
+          output: output,
+          noPlaylist: true,
+        });
 
-    const file = await downloadVideo(url, format)
-    return file
+        return {
+          downloadUrl: `/download/audio/${name}`,
+        };
+      }
 
-   }
+      // =====================
+      // VIDEO + AUDIO MERGE
+      // =====================
 
-  }catch(err){
+      const name = `video_${crypto.randomUUID()}.mp4`;
+      const output = path.join(VIDEO_DIR, name);
 
-   console.error("❌ Job failed:",err)
-   throw err
+      await ytdlp(url, {
+        format:`${format}+140/bestaudio`,
+        mergeOutputFormat: "mp4",
+        output: output,
+        noPlaylist: true,
+        noWarnings: true,
+      });
 
-  }
+      return {
+        downloadUrl: `/download/video/${name}`,
+      };
+    } catch (err) {
+      console.log("Download worker error:", err);
+      throw err;
+    }
+  },
+  { connection: redis },
+);
 
- },
- { connection: redis }
-)
-
-worker.on("completed", job => {
- console.log("✅ Job completed:", job.id)
-})
-
-worker.on("failed", (job,err) => {
- console.log("❌ Job failed:", err)
-})
-
-export default worker
+console.log("Download worker started");

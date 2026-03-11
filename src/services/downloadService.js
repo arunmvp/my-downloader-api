@@ -1,52 +1,65 @@
-import ytdlp from "yt-dlp-exec"
-import path from "path"
-import fs from "fs"
+import ytdlp from "yt-dlp-exec";
+import path from "path";
+import fs from "fs";
 
-const DOWNLOAD_VID = "storage/videos"
-const DOWNLOAD_AUD = "storage/audio"
+const VIDEO_DIR = "storage/videos";
+const AUDIO_DIR = "storage/audio";
 
-// Ensure folders exist
-if (!fs.existsSync(DOWNLOAD_VID)) {
-  fs.mkdirSync(DOWNLOAD_VID, { recursive: true })
+// ensure folders exist
+if (!fs.existsSync(VIDEO_DIR)) {
+  fs.mkdirSync(VIDEO_DIR, { recursive: true });
 }
 
-if (!fs.existsSync(DOWNLOAD_AUD)) {
-  fs.mkdirSync(DOWNLOAD_AUD, { recursive: true })
+if (!fs.existsSync(AUDIO_DIR)) {
+  fs.mkdirSync(AUDIO_DIR, { recursive: true });
 }
 
-export async function downloadVideo(url, format) {
-
-  const id = Date.now()
+export async function downloadVideo(url, format, onProgress) {
+  const id = Date.now();
 
   // MP3 DOWNLOAD
   if (format === "mp3") {
-
-    const fileName = `audio_${id}.mp3`
-    const outputPath = path.join(DOWNLOAD_AUD, fileName)
+    const fileName = `audio_${id}.mp3`;
+    const output = path.join(AUDIO_DIR, fileName);
 
     await ytdlp(url, {
       extractAudio: true,
       audioFormat: "mp3",
-      audioQuality: 0,
-      output: outputPath
-    })
+      output,
+      progress: true,
+      newline: true,
+      onProgress: (p) => {
+        if (p.percent) {
+          onProgress(Math.round(p.percent));
+        }
+      },
+    });
 
     return {
-      downloadUrl: `/storage/audio/${fileName}`
-    }
+      type: "audio",
+      downloadUrl: `/download/audio/${fileName}`,
+    };
   }
 
-  // MP4 VIDEO DOWNLOAD
-  const fileName = `video_${id}.mp4`
-  const outputPath = path.join(DOWNLOAD_VID, fileName)
+  // VIDEO DOWNLOAD
+  const fileName = `video_${id}.mp4`;
+  const output = path.join(VIDEO_DIR, fileName);
 
   await ytdlp(url, {
-    format: `${format}+bestaudio/best`,
+    format: format,
     mergeOutputFormat: "mp4",
-    output: outputPath
-  })
+    output,
+    progress: true,
+    newline: true,
+    onProgress: (p) => {
+      if (p.percent) {
+        onProgress(Math.round(p.percent));
+      }
+    },
+  });
 
   return {
-    downloadUrl: `/storage/videos/${fileName}`
-  }
+    type: "video",
+    downloadUrl: `/download/video/${fileName}`,
+  };
 }
